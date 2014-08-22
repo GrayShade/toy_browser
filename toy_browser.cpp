@@ -120,26 +120,35 @@ public:
             switch (state_)
             {
             case parser_state::before_element:
-                if (*data == '<')                
-                    state_ = parser_state::in_element_name;                
+                if (*data == '<')
+                {
+                    element_name_.clear();
+                    state_ = parser_state::in_element_name;
+                }
                 else
                     throw exception("unexpected input while waiting for element start");
                 break;
             case parser_state::in_element_name:
-				if (*data == '>' || *data == ' ') 
-				{
-					auto child_element = make_unique<html_element_node>(current_element_, element_name_);
-					auto child_ptr = child_element.get();
-					current_element_->children_.emplace_back(move(child_element));
-					current_element_ = child_ptr;
-					
-					element_name_.clear();
-					
-					if (*data == '>')
-						state_ = parser_state::in_element;
-					else					
-						state_ = parser_state::before_attribute_name;					
-				}
+                if (*data == '>')
+                {
+                    auto child_element = make_unique<html_element_node>(current_element_, element_name_);
+                    auto child_ptr = child_element.get();
+                    current_element_->children_.emplace_back(move(child_element));
+                    current_element_ = child_ptr;
+
+                    state_ = parser_state::in_element;
+                }
+                else if (*data == ' ')
+                {
+                    auto child_element = make_unique<html_element_node>(current_element_, element_name_);
+                    auto child_ptr = child_element.get();
+                    current_element_->children_.emplace_back(move(child_element));
+                    current_element_ = child_ptr;
+
+                    attribute_name_.clear();
+
+                    state_ = parser_state::before_attribute_name;
+                }
                 else
                     element_name_ += *data;
                 break;
@@ -152,7 +161,7 @@ public:
                 {
                     data--;
                     len++;
-                    state_ = attribute_name;					
+                    state_ = attribute_name;
                 }
                 break;
             case parser_state::attribute_name:
@@ -162,9 +171,8 @@ public:
                     state_ = parser_state::before_attribute_value;
                 else if (*data == '>')
                 {
+                    attribute_value_ = attribute_name_;
                     (*current_element_)[attribute_name_] = attribute_name_;
-					attribute_name_.clear();
-
                     state_ = parser_state::in_element;
                 }
                 else
@@ -181,8 +189,11 @@ public:
             case parser_state::before_attribute_value:
                 if (*data == ' ')
                     continue;
-                if (*data == '"' || *data == '\'')                
-                    state_ = parser_state::attribute_value;                
+                if (*data == '"' || *data == '\'')
+                {
+                    attribute_value_.clear();
+                    state_ = parser_state::attribute_value;
+                }
                 else
                     throw exception("unexpected input while waiting for attribute value");
                 break;
@@ -190,9 +201,6 @@ public:
                 if (*data == '"' || *data == '\'')
                 {
                     (*current_element_)[attribute_name_] = attribute_value_;
-					attribute_name_.clear();
-					attribute_value_.clear();
-
                     state_ = parser_state::before_attribute_name;
                 }
                 else
@@ -206,15 +214,20 @@ public:
                         current_element_->children_.emplace_back(make_unique<html_text_node>(current_element_, element_text_));
                         element_text_.clear();
                     }
-					                    
+
+                    element_name_.clear();
+
                     state_ = parser_state::before_tag_start_or_close;
                 }
                 else
                     element_text_ += *data;
                 break;
             case parser_state::before_tag_start_or_close:
-                if (*data == '/')               
-					state_ = parser_state::close_element_name;                
+                if (*data == '/')
+                {
+                    element_name_.clear();
+                    state_ = parser_state::close_element_name;
+                }
                 else
                 {
                     data -= 2;
@@ -238,14 +251,12 @@ public:
                 if (*data == ' ')
                     continue;
                 else if (*data == '>')
-                {				
+                {
                     if (element_name_ != current_element_->element_name_)
                         throw exception("mismatched close tag");
-					
-					element_name_.clear();
-					
+                    
                     current_element_ = current_element_->parent_element();
-					
+
                     state_ = parser_state::in_element;
                 }
                 else
@@ -262,7 +273,6 @@ int main()
     {
         //string input = "<html foo='bar'></html>";
         string input = "<html x>A<div y>B</div></html>";
-		//string input = "<a>x</a>";
         html_parser parser;
         parser.consume(input.c_str(), input.size());
         parser.root_.print(cerr);
