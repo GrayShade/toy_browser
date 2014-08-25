@@ -91,9 +91,7 @@ class html_parser
         attribute_separator,
         before_attribute_value,
         attribute_value,
-        before_element_start_close,
-        in_element,
-        in_element_end
+        in_element
     };
 
     parser_state state_;
@@ -104,13 +102,11 @@ class html_parser
     html_element_node *current_element_;
 
 public:
-
-    html_element_node root_;
+    unique_ptr<html_element_node> root_node_;
 
     html_parser()
-        : state_(parser_state::before_element), root_(nullptr, string())
+        : state_(parser_state::before_element), current_element_(), root_node_()
     {
-        current_element_ = &root_;
     }
 
     void consume(const char *data, size_t len)
@@ -128,10 +124,18 @@ public:
             case parser_state::in_element_name:
                 if (*data == '>' || *data == ' ')
                 {
-                    auto child_element = make_unique<html_element_node>(current_element_, element_name_);
-                    auto child_ptr = child_element.get();
-                    current_element_->children_.emplace_back(move(child_element));
-                    current_element_ = child_ptr;
+                    if (current_element_)
+                    {
+                        auto child_element = make_unique<html_element_node>(current_element_, element_name_);
+                        auto child_ptr = child_element.get();
+                        current_element_->children_.emplace_back(move(child_element));
+                        current_element_ = child_ptr;
+                    }
+                    else
+                    {
+                        root_node_ = make_unique<html_element_node>(nullptr, element_name_);
+                        current_element_ = root_node_.get();
+                    }
 
                     element_name_.clear();
 
@@ -217,9 +221,9 @@ public:
                     state_ = parser_state::close_element_name;
                 else
                 {
-                    data -= 2;
-                    len += 2;
-                    state_ = parser_state::before_element;
+                    data--;
+                    len++;
+                    state_ = parser_state::in_element_name;
                 }
                 break;
             case parser_state::close_element_name:
@@ -256,16 +260,22 @@ public:
     }
 };
 
+unique_ptr<html_element_node> parse(string input)
+{
+    html_parser parser;
+    parser.consume(input.c_str(), input.size());
+    return move(parser.root_node_);
+}
 int main()
 {
     try
     {
-        //string input = "<html foo='bar'></html>";
-        string input = "<html x>A<div y>B</div></html>";
-        //string input = "<a>x</a>";
-        html_parser parser;
-        parser.consume(input.c_str(), input.size());
-        parser.root_.print(cerr);
+        parse("<html foo='bar'></html>")->print(cerr);
+        cerr << endl;
+        parse("<html x>A<div y>B</div></html>")->print(cerr);
+        cerr << endl;
+        parse("<a>x</a>")->print(cerr);
+        cerr << endl;
     }
     catch (const exception &e)
     {
